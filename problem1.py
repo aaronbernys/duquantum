@@ -17,6 +17,33 @@ def create_ghz_state(qubits: set[cirq.GridQubit], part: Literal['a','b','c']) ->
     Returns:
         A circuit that creates a GHZ state on these qubits.
     """
+    num_qubits = len(qubits)
+    qs = sorted(qubits)
+    if part == 'a':
+        return ghz_state_helper(qs, num_qubits, 0, len(qubits))
+    
+    elif part == 'b':
+        return ghz_state_helper(qs, num_qubits, 0, len(qubits))
+    
+    elif part == 'c':
+        return ghz_state_helper(qs, num_qubits, 0, len(qubits))
+    
+    else:
+        return -1; # error
+
+def ghz_state_helper(qubits: set[cirq.GridQubit], num_qubits: int, low: int, high: int) -> cirq.Circuit:
+    mid = low + (high - low) // 2
+
+    if num_qubits == 1:
+        return cirq.Circuit(cirq.H(qubits[low]))
+
+    return (
+        ghz_state_helper(qubits, num_qubits//2, low, mid) 
+        + ghz_state_helper(qubits, num_qubits//2, mid, high) 
+        + cirq.CZ(qubits[low], qubits[mid]) 
+        + cirq.H(qubits[mid])
+        )
+
 
 def check_ghz_statevector(
         circuit: cirq.Circuit,
@@ -53,12 +80,14 @@ def test_operations_on_adjacent_qubits(circuit: cirq.Circuit):
             assert dy in {0, 1}
             assert dx + dy == 1
 
+if __name__ == "__main__":
 # we may add additional qubit choices beyond these
-qubit_choices = [
-    cirq.GridQubit.rect(1, 20),
-    cirq.GridQubit.rect(4, 5),
-    cirq_google.Willow105.metadata.qubit_set,
-]
-score = sum(
-    len(qubits) ** 2 / len(create_ghz_state(qubits)) for qubits in qubit_choices
-)
+    qubit_choices = [
+        cirq.GridQubit.rect(1, 20),
+        cirq.GridQubit.rect(4, 5),
+        cirq_google.Willow105.metadata.qubit_set,
+    ]
+    score = sum(
+        len(qubits) ** 2 / len(create_ghz_state(qubits, 'a')) for qubits in qubit_choices
+    )
+    print(score)
