@@ -6,6 +6,55 @@ import cirq_google
 import numpy as np
 from typing import Literal
 
+from sympy import N, Q
+
+#Part A
+def ghz_part_a(qubits, low, high):
+    n = high - low
+
+    if n == 1:
+        return cirq.Circuit(cirq.H(qubits[low]))
+
+    mid = low + (n + 1) // 2
+    circuit =  ghz_part_a(qubits, low, mid) 
+    for i in range(high - mid):
+        circuit.append([cirq.H(qubits[mid + i]),
+            cirq.CZ(qubits[low + i], qubits[mid + i]),
+            cirq.H(qubits[mid + i])])
+
+    return circuit
+
+#Part B
+def ghz_part_b(qubits):
+    circuit = cirq.Circuit()
+    linked_qubits = []
+    circuit.append(cirq.H.on_each(*qubits))
+    root = sorted(qubits)[len(qubits)//2]
+    linked_qubits.append(root)
+    for q in linked_qubits:
+        for n in q.neighbors(qubits):
+            if n not in linked_qubits:
+                circuit.append(cirq.CZ(q,n))
+                circuit.append(cirq.H(n))
+                linked_qubits.append(n)
+    
+    return circuit
+
+#Part C
+def ghz_part_c(qubits):
+    circuit = cirq.Circuit()
+    linked_qubits = []
+    root = sorted(qubits)[len(qubits)//2]
+    circuit.append(cirq.H(root))
+    linked_qubits.append(root)
+    for q in linked_qubits:
+        for n in q.neighbors(qubits):
+            if n not in linked_qubits:
+                circuit.append(cirq.CNOT(q,n))
+                linked_qubits.append(n)
+    
+    return circuit
+
 
 def create_ghz_state(qubits: set[cirq.GridQubit], part: Literal['a','b','c']) -> cirq.Circuit:
     """Create a GHZ state on the specified qubits.
@@ -18,32 +67,18 @@ def create_ghz_state(qubits: set[cirq.GridQubit], part: Literal['a','b','c']) ->
         A circuit that creates a GHZ state on these qubits.
     """
     num_qubits = len(qubits)
-    qs = sorted(qubits)
+
     if part == 'a':
-        return ghz_state_helper(qs, num_qubits, 0, len(qubits))
-    
+        q = sorted(qubits)
+        return ghz_part_a(q, 0, len(q))
     elif part == 'b':
-        return ghz_state_helper(qs, num_qubits, 0, len(qubits))
-    
+        q = set(qubits)
+        return ghz_part_b(q)
     elif part == 'c':
-        return ghz_state_helper(qs, num_qubits, 0, len(qubits))
-    
+        q = set(qubits)
+        return ghz_part_c(q)
     else:
         return -1; # error
-
-def ghz_state_helper(qubits: set[cirq.GridQubit], num_qubits: int, low: int, high: int) -> cirq.Circuit:
-    mid = low + (high - low) // 2
-
-    if num_qubits == 1:
-        return cirq.Circuit(cirq.H(qubits[low]))
-
-    return (
-        ghz_state_helper(qubits, num_qubits//2, low, mid) 
-        + ghz_state_helper(qubits, num_qubits//2, mid, high) 
-        + cirq.CZ(qubits[low], qubits[mid]) 
-        + cirq.H(qubits[mid])
-        )
-
 
 def check_ghz_statevector(
         circuit: cirq.Circuit,
@@ -54,7 +89,7 @@ def check_ghz_statevector(
     all_qubits = circuit.all_qubits()
     ancilla_qubits = all_qubits.difference(qubits)
     ordered_qubits = sorted(qubits) + sorted(ancilla_qubits)
-    keep_indices = range(qubits)
+    keep_indices = range(len(qubits))
     num_qubits = len(qubits)
     ideal_state = np.zeros(2**num_qubits)
     ideal_state[0] = 1 / np.sqrt(2)
@@ -86,8 +121,22 @@ if __name__ == "__main__":
         cirq.GridQubit.rect(1, 20),
         cirq.GridQubit.rect(4, 5),
         cirq_google.Willow105.metadata.qubit_set,
+        cirq.GridQubit.rect(5,5)
     ]
-    score = sum(
-        len(qubits) ** 2 / len(create_ghz_state(qubits, 'a')) for qubits in qubit_choices
-    )
-    print(score)
+
+    for part in 'abc':
+        score = 0.0;
+        for qubits in qubit_choices:
+            circuit = create_ghz_state(qubits, part)
+            n = len(qubits)
+            if n <= 22:
+                ghz = check_ghz_statevector(circuit, qubits, 1)
+            else:
+                ghz = "pass"
+            if part == 'b' or 'c':
+                test_operations_on_adjacent_qubits(circuit)
+            score += len(qubits) ** 2 / len(create_ghz_state(qubits, part))
+            print(f'Part: {part}, GHZ? {ghz}, Depth: {len(circuit)}, Score: {score}')
+        
+        print(circuit)
+        print(f'Total Score: {score}')

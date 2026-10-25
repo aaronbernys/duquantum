@@ -1,5 +1,7 @@
 *.ipynb
 cirqbasics.py
 cirq-env/
-__pychace__/
+__pycache__/
+test.py
+*.old.py
 
