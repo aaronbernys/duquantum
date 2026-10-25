@@ -7,6 +7,11 @@ import cirq_google
 import numpy as np
 from typing import Literal
 
+'''
+AI USE:
+    AI was used for the purpose of research, scanning through documentation, and making sure our solutions met all the requirements.
+    Very little, if any, AI was used for algorithmic design when used it was for debugging and syntax questions especially for cirq functions. 
+'''
 def create_w_state(
     num_qubits: int,
     cz_pauli_error_rate: dict[
@@ -263,8 +268,11 @@ if __name__ == "__main__":
     zero_errors = generate_qubit_error_rates(5e-3, 0.5, single_qubit_dropouts, 2e-4)
     one_errors = generate_qubit_error_rates(1e-2, 0.5, single_qubit_dropouts, 3e-4)
 
-    startTime=time.time()
+    startTime = time.time()
     circuit, qubits = create_w_state(4, cz_pauli_error_rate, sq_pauli_error_rate, zero_errors, one_errors)
+    circuit = cirq.add_dynamical_decoupling(circuit)
+    if time.time() - startTime > 60:
+        raise NotImplementedError("Construction took too long")
     test_circuit(circuit, qubits)
     print("state check passed")
 
@@ -281,10 +289,6 @@ if __name__ == "__main__":
     print("score (ideal):", overall_score(z_bits, x_bits))
 
     circuit = add_depolarizing_noise(circuit, sorted(qubits), cz_pauli_error_rate, sq_pauli_error_rate)
-    elapsed=time.time() - startTime
-    if elapsed>60:
-        raise NotImplementedError(f'Execution took {elapsed:.2f}s, exceeding the 60 second limit.')
-
     
     qs = sorted(qubits)
     z_bits = cirq.Simulator().run(circuit + [cirq.measure(*qs, key="m")], repetitions=5000).measurements["m"]

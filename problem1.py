@@ -8,6 +8,11 @@ from typing import Literal
 
 from sympy import N, Q
 
+'''
+AI USE:
+    AI was used for the purpose of research, scanning through documentation, and making sure our solutions met all the requirements.
+    Very little, if any, AI was used for algorithmic design when used it was for debugging and syntax questions especially for cirq functions. 
+'''
 #Part A
 def ghz_part_a(qubits, low, high):
     n = high - low
