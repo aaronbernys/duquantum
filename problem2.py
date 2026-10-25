@@ -1,5 +1,6 @@
 import itertools
 import math
+import time
 
 import cirq
 import cirq_google
@@ -31,6 +32,43 @@ def create_w_state(
         NotImplementedError: The requested num_qubits is not implemented.
     """
 
+    circuit = cirq.Circuit()
+    mid = sorted(sq_pauli_error_rate)[len(sq_pauli_error_rate) // 2]
+    qubits = cirq.GridQubit.rect(1, num_qubits, top=mid.row, left=mid.col)
+    qubits = sorted(qubits)
+    circuit.append(cirq.PhasedXZGate(x_exponent=1, z_exponent=0, axis_phase_exponent=0).on(min(qubits)))
+    theta = 2 * math.acos((1/math.sqrt(num_qubits)))
+    circuit.append(cirq.PhasedXZGate(x_exponent=theta/math.pi, z_exponent=0, axis_phase_exponent=0.5).on(qubits[1]))
+    for q in range(len(qubits) - 2):
+        theta = 2 * math.acos((1/math.sqrt(len(qubits) - q - 1)))
+        circuit.append(cirq.PhasedXZGate(x_exponent=0.5, z_exponent=-1, axis_phase_exponent=-0.5).on(qubits[q]))
+        circuit.append(cirq.CZ(qubits[q + 1], qubits[q]))
+        circuit.append(cirq.PhasedXZGate(x_exponent=0.5, z_exponent=-1, axis_phase_exponent=-0.5).on(qubits[q]))
+        circuit.append(cirq.PhasedXZGate(x_exponent=(theta / 2) / math.pi, z_exponent=0, axis_phase_exponent=0.5).on(qubits[q + 2]))
+        circuit.append(cirq.CZ(qubits[q + 1], qubits[q + 2]))
+        circuit.append(cirq.PhasedXZGate(x_exponent=-1 * (theta / 2) / math.pi, z_exponent=0, axis_phase_exponent=0.5).on(qubits[q + 2]))
+        circuit.append(cirq.CZ(qubits[q + 1], qubits[q + 2]))
+    circuit.append(cirq.PhasedXZGate(x_exponent=0.5, z_exponent=-1, axis_phase_exponent=-0.5).on(qubits[num_qubits - 2]))
+    circuit.append(cirq.CZ(qubits[num_qubits - 1], qubits[num_qubits - 2]))
+    circuit.append(cirq.PhasedXZGate(x_exponent=0.5, z_exponent=-1, axis_phase_exponent=-0.5).on(qubits[num_qubits - 2]))
+
+    return circuit, set(qubits)
+
+def add_depolarizing_noise(circuit, qubits, cz_pauli_error_rate, sq_pauli_error_rate):
+    noisy = cirq.Circuit()
+    for op in circuit.all_operations():
+        noisy.append(op)
+        if len(op.qubits) == 1:
+            q = op.qubits[0]
+            p, w = sq_pauli_error_rate[q]
+            noisy.append(cirq.depolarize(p).on(q))
+        elif len(op.qubits) == 2:
+            a, b = op.qubits
+            p, w = cz_pauli_error_rate.get((a, b)) or cz_pauli_error_rate[(b, a)]
+            noisy.append(cirq.depolarize(p, n_qubits=2).on(a, b))
+    return noisy
+
+
 def create_w_statevector(num_qubits: int) -> np.ndarray:
     psi = np.zeros(2**num_qubits)
     normalization = 1 / np.sqrt(num_qubits)
@@ -43,7 +81,7 @@ def test_circuit(circuit: cirq.Circuit, qubits: set[cirq.GridQubit], sampler = c
     all_qubits = circuit.all_qubits()
     ancilla_qubits = all_qubits.difference(qubits)
     ordered_qubits = sorted(qubits) + sorted(ancilla_qubits)
-    keep_indices = range(qubits)
+    keep_indices = range(len(qubits))
     num_qubits = len(qubits)
     psi_circuit_full = sampler.simulate(circuit, qubit_order=ordered_qubits).final_state_vector
     psi_circuit = cirq.sub_state_vector(
@@ -216,11 +254,48 @@ def generate_two_qubit_pauli_error_rates(
         zip(working_pairs, zip(error_rate, uncertainty * np.ones(len(working_pairs))))
     )
 
+if __name__ == "__main__":
+    single_qubit_dropouts = pick_single_qubit_dropouts(0.01)
+    sq_pauli_error_rate = generate_qubit_error_rates(4e-4, 0.5, single_qubit_dropouts, 2e-4)
+    cz_pauli_error_rate = generate_two_qubit_pauli_error_rates(
+        single_qubit_dropouts=single_qubit_dropouts
+    )
+    zero_errors = generate_qubit_error_rates(5e-3, 0.5, single_qubit_dropouts, 2e-4)
+    one_errors = generate_qubit_error_rates(1e-2, 0.5, single_qubit_dropouts, 3e-4)
 
-single_qubit_dropouts = pick_single_qubit_dropouts(0.01)
-sq_pauli_error_rate = generate_qubit_error_rates(4e-4, 0.5, single_qubit_dropouts, 2e-4)
-cz_pauli_error_rate = generate_two_qubit_pauli_error_rates(
-    single_qubit_dropouts=single_qubit_dropouts
-)
-zero_errors = generate_qubit_error_rates(5e-3, 0.5, single_qubit_dropouts, 2e-4)
-one_errors = generate_qubit_error_rates(1e-2, 0.5, single_qubit_dropouts, 3e-4)
+    startTime=time.time()
+    circuit, qubits = create_w_state(4, cz_pauli_error_rate, sq_pauli_error_rate, zero_errors, one_errors)
+    test_circuit(circuit, qubits)
+    print("state check passed")
+
+    qs = sorted(qubits)
+    z_bits = cirq.Simulator().run(circuit + [cirq.measure(*qs, key="m")], repetitions=5000).measurements["m"]
+    x_bits = cirq.Simulator().run(circuit + [cirq.H.on_each(*qs), cirq.measure(*qs, key="m")], repetitions=5000).measurements["m"]
+    rng = np.random.default_rng()
+    z_bits, x_bits = z_bits.copy(), x_bits.copy()
+    for bits in (z_bits, x_bits):
+        for j, q in enumerate(qs):
+            r = rng.random(len(bits))
+            flip = np.where(bits[:, j] == 0, r < zero_errors[q][0], r < one_errors[q][0])
+            bits[:, j] = np.where(flip, 1 - bits[:, j], bits[:, j])
+    print("score (ideal):", overall_score(z_bits, x_bits))
+
+    circuit = add_depolarizing_noise(circuit, sorted(qubits), cz_pauli_error_rate, sq_pauli_error_rate)
+    elapsed=time.time() - startTime
+    if elapsed>60:
+        raise NotImplementedError(f'Execution took {elapsed:.2f}s, exceeding the 60 second limit.')
+
+    
+    qs = sorted(qubits)
+    z_bits = cirq.Simulator().run(circuit + [cirq.measure(*qs, key="m")], repetitions=5000).measurements["m"]
+    x_bits = cirq.Simulator().run(circuit + [cirq.H.on_each(*qs), cirq.measure(*qs, key="m")], repetitions=5000).measurements["m"]
+    z_bits, x_bits = z_bits.copy(), x_bits.copy()
+    for bits in  (z_bits, x_bits):
+        for j, q in enumerate(qs):
+            r = rng.random(len(bits))
+            flip = np.where(bits[:, j] == 0, r < zero_errors[q][0], r < one_errors[q][0])
+            bits[:, j] = np.where(flip, 1 - bits[:, j], bits[:, j])
+    print("score (error):", overall_score(z_bits, x_bits))
+
+
+    

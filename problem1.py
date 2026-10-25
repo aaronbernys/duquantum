@@ -22,6 +22,7 @@ def ghz_part_a(qubits, low, high):
             cirq.CZ(qubits[low + i], qubits[mid + i]),
             cirq.H(qubits[mid + i])])
 
+    circuit = cirq.add_dynamical_decoupling(circuit)
     return circuit
 
 #Part B
@@ -38,6 +39,7 @@ def ghz_part_b(qubits):
                 circuit.append(cirq.H(n))
                 linked_qubits.append(n)
     
+    circuit = cirq.add_dynamical_decoupling(circuit)
     return circuit
 
 #Part C
@@ -53,6 +55,7 @@ def ghz_part_c(qubits):
                 circuit.append(cirq.CNOT(q,n))
                 linked_qubits.append(n)
     
+    circuit = cirq.add_dynamical_decoupling(circuit)
     return circuit
 
 
@@ -133,8 +136,9 @@ if __name__ == "__main__":
                 ghz = check_ghz_statevector(circuit, qubits, 1)
             else:
                 ghz = "pass"
-            if part == 'b' or 'c':
+            if part in 'b':
                 test_operations_on_adjacent_qubits(circuit)
+
             score += len(qubits) ** 2 / len(create_ghz_state(qubits, part))
             print(f'Part: {part}, GHZ? {ghz}, Depth: {len(circuit)}, Score: {score}')
         
